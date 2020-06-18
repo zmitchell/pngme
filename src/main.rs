@@ -10,3 +10,4 @@ pub type Result<T> = std::result::Result<T, Error>;
 fn main() -> Result<()> {
     todo!()
 }
+
