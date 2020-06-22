@@ -20,9 +20,9 @@ impl fmt::Display for ChunkTypeError {
 
 impl std::error::Error for ChunkTypeError {}
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ChunkType {
-    bytes: [u8; 4],
+    pub bytes: [u8; 4],
 }
 
 impl ChunkType {
