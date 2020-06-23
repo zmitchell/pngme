@@ -3,6 +3,7 @@ use crc::crc32::checksum_ieee;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
+use std::io::Read;
 
 #[derive(Debug)]
 pub enum ChunkError {
@@ -11,17 +12,17 @@ pub enum ChunkError {
     InvalidCRC(u32, u32),
     LengthMismatch(u32, u32),
     ChunkTooShort,
+    IO(std::io::Error),
 }
 
 impl fmt::Display for ChunkError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ChunkError::UTF8Error(err) => write!(
+            ChunkError::UTF8Error(_) => write!(
                 f,
-                "Data is not valid UTF-8 and cannot be converted into a string.\n{}",
-                err
+                "Data is not valid UTF-8 and cannot be converted into a string."
             ),
-            ChunkError::ChunkTypeError(err) => write!(f, "Invalid chunk type: {}", err),
+            ChunkError::ChunkTypeError(_) => write!(f, "Invalid chunk type"),
             ChunkError::InvalidCRC(found, expected) => {
                 write!(f, "Invalid CRC, found {}, expected {}", found, expected)
             }
@@ -31,6 +32,7 @@ impl fmt::Display for ChunkError {
                 found, expected
             ),
             ChunkError::ChunkTooShort => write!(f, "Chunk must be at least 12 bytes long."),
+            ChunkError::IO(_) => write!(f, "Failed to read bytes as Chunk"),
         }
     }
 }
@@ -40,6 +42,7 @@ impl Error for ChunkError {
         match self {
             ChunkError::UTF8Error(err) => Some(err),
             ChunkError::ChunkTypeError(err) => Some(err),
+            ChunkError::IO(err) => Some(err),
             _ => None,
         }
     }
@@ -48,6 +51,12 @@ impl Error for ChunkError {
 impl std::convert::From<ChunkTypeError> for ChunkError {
     fn from(err: ChunkTypeError) -> ChunkError {
         ChunkError::ChunkTypeError(err)
+    }
+}
+
+impl std::convert::From<std::io::Error> for ChunkError {
+    fn from(err: std::io::Error) -> ChunkError {
+        ChunkError::IO(err)
     }
 }
 
@@ -67,28 +76,19 @@ impl TryFrom<&[u8]> for Chunk {
         if total_length < 12 {
             return Err(ChunkError::ChunkTooShort);
         }
+        let mut reader = std::io::BufReader::new(bytes);
         let mut length_bytes = [0; 4];
-        bytes[0..4]
-            .iter()
-            .enumerate()
-            .for_each(|(i, x)| length_bytes[i] = *x);
+        reader.read_exact(&mut length_bytes)?;
         let length = u32::from_be_bytes(length_bytes);
         let mut ct_bytes = [0; 4];
-        bytes[4..8]
-            .iter()
-            .enumerate()
-            .for_each(|(i, x)| ct_bytes[i] = *x);
+        reader.read_exact(&mut ct_bytes)?;
         let chunk_type = ChunkType::try_from(ct_bytes)?;
+        let mut data = vec![0; length as usize];
+        reader.read_exact(data.as_mut_slice())?;
         let mut crc_bytes = [0; 4];
-        bytes[(total_length - 4)..]
-            .iter()
-            .enumerate()
-            .for_each(|(i, x)| crc_bytes[i] = *x);
+        reader.read_exact(&mut crc_bytes)?;
         let crc = u32::from_be_bytes(crc_bytes);
-        let mut data = Vec::new();
-        data.extend_from_slice(&bytes[8..(total_length - 4)]);
-        let bytes_for_crc = chunk_type
-            .bytes
+        let bytes_for_crc = ct_bytes
             .iter()
             .chain(data.as_slice().iter())
             .copied()
@@ -107,10 +107,10 @@ impl TryFrom<&[u8]> for Chunk {
 }
 
 impl Chunk {
-    fn new(chunk_type: ChunkType, data: Vec<u8>) -> Result<Self, std::num::TryFromIntError> {
+    pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Result<Self, std::num::TryFromIntError> {
         let length = u32::try_from(data.len())?;
         let bytes_for_crc = chunk_type
-            .bytes
+            .bytes()
             .iter()
             .chain(data.as_slice().iter())
             .copied()
@@ -124,32 +124,32 @@ impl Chunk {
         })
     }
 
-    fn length(&self) -> u32 {
+    pub fn length(&self) -> u32 {
         self.length
     }
 
-    fn chunk_type(&self) -> ChunkType {
+    pub fn chunk_type(&self) -> ChunkType {
         self.chunk_type
     }
 
-    fn data(&self) -> &[u8] {
+    pub fn data(&self) -> &[u8] {
         self.data.as_slice()
     }
 
-    fn crc(&self) -> u32 {
+    pub fn crc(&self) -> u32 {
         self.crc
     }
 
-    fn data_as_string(&self) -> Result<String, ChunkError> {
+    pub fn data_as_string(&self) -> Result<String, ChunkError> {
         std::string::String::from_utf8(self.data.clone()).map_err(|err| ChunkError::UTF8Error(err))
     }
 
-    fn as_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let bytes: Vec<u8> = self
             .length
             .to_be_bytes()
             .iter()
-            .chain(self.chunk_type.bytes.iter())
+            .chain(self.chunk_type.bytes().iter())
             .chain(self.data.iter())
             .chain(self.crc.to_be_bytes().iter())
             .copied()

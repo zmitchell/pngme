@@ -22,11 +22,11 @@ impl std::error::Error for ChunkTypeError {}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ChunkType {
-    pub bytes: [u8; 4],
+    bytes: [u8; 4],
 }
 
 impl ChunkType {
-    fn bytes(&self) -> [u8; 4] {
+    pub fn bytes(&self) -> [u8; 4] {
         self.bytes
     }
 
@@ -35,7 +35,7 @@ impl ChunkType {
     /// Valid chunk types follow these rules:
     /// 1) They must consist of ASCII letters (uppercase or lowercase).
     /// 2) The third character must be uppercase.
-    fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         // Lowercase ASCII
         let lower = 65u8..=90;
         // Uppercase ASCII
@@ -55,19 +55,19 @@ impl ChunkType {
     /// Returns true if bit 5 of the first byte is 0.
     ///
     /// A critical chunk type is necessary to meaningfully display the contents of the file.
-    fn is_critical(&self) -> bool {
+    pub fn is_critical(&self) -> bool {
         return (self.bytes[0] & 32) == 0;
     }
 
-    fn is_public(&self) -> bool {
+    pub fn is_public(&self) -> bool {
         return (self.bytes[1] & 32) == 0;
     }
 
-    fn is_reserved_bit_valid(&self) -> bool {
+    pub fn is_reserved_bit_valid(&self) -> bool {
         return (self.bytes[2] & 32) == 0;
     }
 
-    fn is_safe_to_copy(&self) -> bool {
+    pub fn is_safe_to_copy(&self) -> bool {
         return (self.bytes[3] & 32) == 32;
     }
 }
